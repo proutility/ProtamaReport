@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRO-TAMA Report | Automasi SIPP</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen font-sans">
+
+    <div class="bg-white p-8 rounded-xl shadow-xl max-w-lg w-full border-t-4 border-emerald-700">
+        
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-extrabold text-gray-800 tracking-wide">
+                PRO-TAMA <span class="text-emerald-700">Report</span>
+            </h1>
+            <p class="text-sm text-gray-500 mt-2">Mesin Automasi Laporan Bulanan SIPP</p>
+        </div>
+
+        <div class="space-y-6">
+            
+            <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center hover:bg-emerald-50 hover:border-emerald-500 transition-all">
+                <svg class="w-12 h-12 text-emerald-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                <label for="uploadSipp" class="cursor-pointer text-sm font-semibold text-gray-700 hover:text-emerald-700">
+                    Pilih File SIPP Mentah (.xlsx)
+                </label>
+                <input type="file" id="uploadSipp" accept=".xlsx, .xls, .csv" class="hidden" />
+                <p id="fileName" class="text-xs text-gray-400 mt-2 text-center">Belum ada file yang dipilih</p>
+            </div>
+
+            <button id="generateLaporan" class="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-all flex justify-center items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+                Generate Excel Laporan
+            </button>
+        </div>
+
+        <div id="statusMessage" class="mt-6 text-center text-sm font-medium hidden rounded py-2">
+            </div>
+        
+    </div>
+
+    <script src="app.js"></script>
+
+    <script>
+        document.getElementById('uploadSipp').addEventListener('change', function(e) {
+            const fileNameDisplay = document.getElementById('fileName');
+            if (e.target.files.length > 0) {
+                fileNameDisplay.textContent = e.target.files[0].name;
+                fileNameDisplay.classList.remove('text-gray-400');
+                fileNameDisplay.classList.add('text-emerald-700', 'font-bold');
+            } else {
+                fileNameDisplay.textContent = "Belum ada file yang dipilih";
+                fileNameDisplay.classList.add('text-gray-400');
+                fileNameDisplay.classList.remove('text-emerald-700', 'font-bold');
+            }
+        });
+    </script>
+</body>
+</html>
