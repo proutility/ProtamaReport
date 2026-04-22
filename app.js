@@ -15,6 +15,28 @@ function showStatus(message, type) {
     else statusMsg.classList.add('bg-blue-100', 'text-blue-800');
 }
 
+// --- FUNGSI ANTI-BADAI BUAT NYUCI DATA SIPP YANG ANEH ---
+function safeText(cell) {
+    if (!cell || cell.value === null || cell.value === undefined) return "";
+    // Kalo SIPP ngasih format Rich Text atau Formula, kita ekstrak teks aslinya
+    if (typeof cell.value === 'object') {
+        if (cell.value.richText) return cell.value.richText.map(rt => rt.text).join('').trim();
+        if (cell.value.result !== undefined) return String(cell.value.result).trim();
+    }
+    return String(cell.value).trim();
+}
+
+function safeDate(cell) {
+    if (!cell || cell.value === null || cell.value === undefined || cell.value === "") return null;
+    let val = cell.value;
+    if (typeof val === 'object' && val.result !== undefined) val = val.result;
+    
+    let parsedDate = new Date(val);
+    // Cek apakah tanggalnya valid
+    if (!isNaN(parsedDate.getTime())) return parsedDate;
+    return null;
+}
+
 btnGenerate.addEventListener('click', async () => {
     if (fileInput.files.length === 0) {
         showStatus('Bro, upload dulu file mentahan SIPP-nya!', 'error');
@@ -22,7 +44,7 @@ btnGenerate.addEventListener('click', async () => {
     }
 
     const file = fileInput.files[0];
-    showStatus('Sedang memproses membaca data SIPP secara vertikal...', 'loading');
+    showStatus('Sedang memproses membaca data SIPP (Mode Anti-Badai)...', 'loading');
 
     try {
         const arrayBuffer = await file.arrayBuffer();
@@ -49,38 +71,31 @@ btnGenerate.addEventListener('click', async () => {
         let tambahIni_G = 0, tambahIni_P = 0;
         let putusIni_G = 0, putusIni_P = 0;
         const statusSah = ["Dikabulkan", "Ditolak", "Gugur", "Tidak Dapat Diterima", "Dicabut", "Perdamaian", "Digugurkan", "Dicoret dari Register"];
-        let bulanLaporan = 3; // Hardcode Maret dulu
+        let bulanLaporan = "3"; // Hardcode Maret dulu pake string biar aman
 
         // --- LOGIKA PEMBACAAN VERTIKAL ---
         const casesData = [];
         let currentCase = null;
 
         rawSheet.eachRow((row, rowNumber) => {
-            // Asumsi baris 1-7 itu kop surat/header. Kita mulai baca data
-            // Cek apakah ada Nomor Perkara
-            let rawNoPerkara = row.getCell(2).value; // Kolom B
-            let strNoPerkara = rawNoPerkara ? rawNoPerkara.toString().trim() : "";
-            
-            let namaHakim = row.getCell(4).value ? row.getCell(4).value.toString().trim() : ""; // Kolom D
+            let strNoPerkara = safeText(row.getCell(2)); // Kolom B
+            let namaHakim = safeText(row.getCell(4));    // Kolom D
 
+            // Deteksi baris perkara baru
             if (strNoPerkara !== "" && strNoPerkara.includes("PA.")) {
-                // Kalo currentCase udah ada isinya, masukin ke lemari (casesData)
-                if (currentCase) {
-                    casesData.push(currentCase);
-                }
+                if (currentCase) casesData.push(currentCase);
                 
-                // Bikin keranjang perkara baru
                 currentCase = {
                     noPerkara: strNoPerkara,
                     hakimKetua: namaHakim,
                     hakimAnggota1: "",
                     hakimAnggota2: "",
-                    tglMasuk: row.getCell(6).value, // Kolom F
-                    tglPutus: row.getCell(10).value, // Kolom J
-                    statusPutusan: row.getCell(11).value ? row.getCell(11).value.toString().trim() : "" // Kolom K
+                    tglMasuk: safeDate(row.getCell(6)), // Kolom F
+                    tglPutus: safeDate(row.getCell(10)), // Kolom J
+                    statusPutusan: safeText(row.getCell(11)) // Kolom K
                 };
             } else {
-                // Kalo strNoPerkara kosong, tapi currentCase ada, berarti ini baris Anggota
+                // Kalo baris nomor perkara kosong, berarti ini baris Anggota
                 if (currentCase && namaHakim !== "") {
                     if (currentCase.hakimAnggota1 === "") {
                         currentCase.hakimAnggota1 = namaHakim;
@@ -90,7 +105,6 @@ btnGenerate.addEventListener('click', async () => {
                 }
             }
         });
-        // Push perkara terakhir setelah looping selesai
         if (currentCase) casesData.push(currentCase);
 
         // --- PENGOLAHAN DATA & REKAP ---
@@ -108,34 +122,32 @@ btnGenerate.addEventListener('click', async () => {
             let sisaBelumDiputus = "-";
             let lamaProses = "-";
 
-            if (!perkara.tglPutus || perkara.tglPutus === "") {
+            if (!perkara.tglPutus) {
                 sisaBelumDiputus = perkara.noPerkara;
-            } else {
-                let dateMasuk = new Date(perkara.tglMasuk);
-                let datePutus = new Date(perkara.tglPutus);
-                let hariProses = Math.ceil((datePutus.getTime() - dateMasuk.getTime()) / (1000 * 3600 * 24)); 
-                lamaProses = hariProses + " hari";
+            } else if (perkara.tglMasuk && perkara.tglPutus) {
+                let hariProses = Math.ceil((perkara.tglPutus.getTime() - perkara.tglMasuk.getTime()) / (1000 * 3600 * 24)); 
+                lamaProses = String(hariProses) + " hari";
             }
 
-            // 3. Rekapitulasi
+            // 3. Rekapitulasi Dapur
             let jenisPerkara = perkara.noPerkara.includes("Pdt.G") ? "G" : "P";
-            let col_AB = perkara.tglMasuk ? (new Date(perkara.tglMasuk).getMonth() + 1).toString() : "0";
-            let col_AC = perkara.tglPutus ? (new Date(perkara.tglPutus).getMonth() + 1).toString() : "0";
-            let col_AE = (col_AB === bulanLaporan.toString()) ? "1" : "0";
+            let col_AB = perkara.tglMasuk ? String(perkara.tglMasuk.getMonth() + 1) : "0";
+            let col_AC = perkara.tglPutus ? String(perkara.tglPutus.getMonth() + 1) : "0";
+            let col_AE = (col_AB === bulanLaporan) ? "1" : "0";
 
             if (jenisPerkara === "G") {
                 if (col_AE === "0") sisaLalu_G++;
                 if (col_AE === "1") tambahIni_G++;
-                if (col_AC === bulanLaporan.toString() && statusSah.includes(perkara.statusPutusan)) putusIni_G++;
+                if (col_AC === bulanLaporan && statusSah.includes(perkara.statusPutusan)) putusIni_G++;
             } else if (jenisPerkara === "P") {
                 if (col_AE === "0") sisaLalu_P++;
                 if (col_AE === "1") tambahIni_P++;
-                if (col_AC === bulanLaporan.toString() && statusSah.includes(perkara.statusPutusan)) putusIni_P++;
+                if (col_AC === bulanLaporan && statusSah.includes(perkara.statusPutusan)) putusIni_P++;
             }
 
             // 4. Masukin ke Excel Baru
-            let textTglMasuk = perkara.tglMasuk ? new Date(perkara.tglMasuk).toLocaleDateString('id-ID') : "";
-            let textTglPutus = perkara.tglPutus ? new Date(perkara.tglPutus).toLocaleDateString('id-ID') : "";
+            let textTglMasuk = perkara.tglMasuk ? perkara.tglMasuk.toLocaleDateString('id-ID') : "";
+            let textTglPutus = perkara.tglPutus ? perkara.tglPutus.toLocaleDateString('id-ID') : "";
 
             newSheet.addRow({
                 no: rowIndex,
@@ -181,7 +193,7 @@ btnGenerate.addEventListener('click', async () => {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'PRO_TAMA_LIPA1_Vertikal.xlsx';
+        a.download = 'PRO_TAMA_LIPA1_Vertikal_Final.xlsx';
         a.click();
         window.URL.revokeObjectURL(url);
         
