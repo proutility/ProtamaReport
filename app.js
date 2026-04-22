@@ -1,5 +1,6 @@
 // =========================================================================
-// PRO-TAMA REPORT (AUTOMASI SIPP) - APP.JS (V3 - FINAL JELAS MERGE 3 BARIS)
+// PRO-TAMA REPORT (AUTOMASI SIPP) - APP.JS (V6 - STANDAR MA SERANG)
+// Develop by: Ilham Nur Pratama (PA Serang)
 // =========================================================================
 
 const btnGenerate = document.getElementById('generateLaporan');
@@ -7,7 +8,7 @@ const fileInput = document.getElementById('uploadSipp');
 const statusMsg = document.getElementById('statusMessage');
 
 function showStatus(message, type) {
-    statusMsg.textContent = message;
+    statusMsg.innerHTML = message;
     statusMsg.classList.remove('hidden', 'bg-emerald-100', 'text-emerald-800', 'bg-red-100', 'text-red-800', 'bg-blue-100', 'text-blue-800');
     if (type === 'success') statusMsg.classList.add('bg-emerald-100', 'text-emerald-800');
     else if (type === 'error') statusMsg.classList.add('bg-red-100', 'text-red-800');
@@ -27,13 +28,7 @@ function getRawDateStr(cell) {
     if (!cell || !cell.value) return "";
     let val = cell.value;
     if (typeof val === 'object' && val.result !== undefined) val = val.result;
-    
-    if (val instanceof Date) {
-        const d = val.getDate().toString().padStart(2, '0');
-        const m = (val.getMonth() + 1).toString().padStart(2, '0');
-        const y = val.getFullYear();
-        return `${d}/${m}/${y}`;
-    }
+    if (val instanceof Date) return val.toLocaleDateString('id-ID');
     return String(val).trim();
 }
 
@@ -44,7 +39,7 @@ btnGenerate.addEventListener('click', async () => {
     }
 
     const file = fileInput.files[0];
-    showStatus('Sedang merakit LIPA 1 format 3 baris...', 'loading');
+    showStatus('Sedang merakit LIPA 1 (Struktur 3 Baris Fix)...', 'loading');
 
     try {
         const arrayBuffer = await file.arrayBuffer();
@@ -55,96 +50,119 @@ btnGenerate.addEventListener('click', async () => {
         const newWorkbook = new ExcelJS.Workbook();
         const newSheet = newWorkbook.addWorksheet('LIPA 1');
 
-        // Setup Header (Kolom 14 Standar LIPA 1)
+        // --- 1. SETUP 14 KOLOM ---
         newSheet.columns = [
-            { header: 'No', width: 5 }, { header: 'No Perkara', width: 25 },
-            { header: 'Tgl Penerimaan', width: 15 }, { header: 'Nama Majelis Hakim', width: 40 },
-            { header: 'Tgl PMH', width: 12 }, { header: 'Tgl PHS', width: 12 },
-            { header: 'Tgl Sidang I', width: 12 }, { header: 'Tgl Diputus', width: 12 },
-            { header: 'Jenis Putusan', width: 15 }, { header: 'Sisa Belum Dibagi', width: 18 },
-            { header: 'Sisa Belum Diputus', width: 25 }, { header: 'Keterangan', width: 12 }
+            { header: 'No', width: 5 },              // 1 (A)
+            { header: 'No Perkara', width: 25 },     // 2 (B)
+            { header: 'Kode Perkara', width: 20 },   // 3 (C) -> KOLOM SENDIRI
+            { header: 'Majelis Hakim', width: 40 },  // 4 (D) -> KOLOM SENDIRI (3 BARIS)
+            { header: 'PP', width: 25 },             // 5 (E) -> KOLOM SENDIRI
+            { header: 'Penerimaan', width: 12 },     // 6 (F)
+            { header: 'PMH', width: 12 },            // 7 (G)
+            { header: 'PHS', width: 12 },            // 8 (H)
+            { header: 'Sidang I', width: 12 },       // 9 (I)
+            { header: 'Diputus', width: 12 },        // 10 (J)
+            { header: 'Jenis Putusan', width: 18 },  // 11 (K)
+            { header: 'Belum Bagi', width: 12 },     // 12 (L)
+            { header: 'Belum Putus', width: 25 },    // 13 (M)
+            { header: 'Ket', width: 10 }             // 14 (N)
         ];
 
-        let currentRow = 8; // Data mulai di baris 8 (setelah Kop & Header)
-        let sisaLalu_G = 0, tambahIni_G = 0, putusIni_G = 0;
-        const bulanLaporan = "3"; // Hardcode Maret
+        // Header Atas (Kop)
+        newSheet.mergeCells('A1:N1'); newSheet.getCell('A1').value = "LAPORAN KEADAAN PERKARA PENGADILAN AGAMA SERANG";
+        newSheet.getCell('A1').font = { bold: true, size: 14 };
+        newSheet.getCell('A1').alignment = { horizontal: 'center' };
 
-        // Membaca data SIPP asli
+        // --- 2. PROSES DATA SIPP ---
+        const gugatan = [];
+        const permohonan = [];
+        let currentCase = null;
+
         rawSheet.eachRow((row, rowNumber) => {
-            // Asumsi No Perkara SIPP di Kolom B (CELL 2)
-            let strNoPerkara = safeText(row.getCell(2)); 
+            let noPerk = safeText(row.getCell(2)); // Kolom B
+            let hakim = safeText(row.getCell(4));  // Kolom D
 
-            if (strNoPerkara !== "" && strNoPerkara.includes("PA.")) {
-                
-                let startMerge = currentRow;
-                let endMerge = currentRow + 2; // Setiap perkara dikasih jatah 3 baris
-
-                // --- 1. TULIS DATA UTAMA KE BARIS PERTAMA DARI JATAH 3 BARIS ---
-                // Data ini nanti bakal di-merge vertikal
-                newSheet.getRow(startMerge).values = [
-                    (currentRow - 8) / 3 + 1, // Penomoran otomatis No 1, 2, 3...
-                    strNoPerkara, // No Perkara
-                    getRawDateStr(row.getCell(6)), // Tgl Masuk (misal Kolom F)
-                    safeText(row.getCell(3)), // BARIS 1 NAMA HAKIM: Hakim Ketua (misal Kolom C)
-                    getRawDateStr(row.getCell(7)), // Tgl PMH (Kolom G)
-                    getRawDateStr(row.getCell(8)), // Tgl PHS (Kolom H)
-                    getRawDateStr(row.getCell(9)), // Tgl Sidang I (Kolom I)
-                    getRawDateStr(row.getCell(10)), // Tgl Putus (Kolom J)
-                    safeText(row.getCell(11)), // Jenis Putusan (Kolom K)
-                    "", // Belum Dibagi (Kosong)
-                    (getRawDateStr(row.getCell(10)) === "" ? strNoPerkara : ""), // Sisa Belum Diputus
-                    "-" // Ket
-                ];
-
-                // --- 2. TULIS NAMA HAKIM ANGGOTA DI BARIS 2 & 3 ---
-                // Kita cuma nulis di kolom ke-4 (Kolom D: Nama Majelis Hakim)
-                newSheet.getCell(`D${startMerge + 1}`).value = safeText(row.getCell(4)); // Baris 2: Anggota 1 (misal Kolom D SIPP)
-                newSheet.getCell(`D${startMerge + 2}`).value = safeText(row.getCell(5)); // Baris 3: Anggota 2 (misal Kolom E SIPP)
-
-                // --- 3. LOGIKA MERGE VERTIKAL 3 BARIS ---
-                // Kita gabung sel setinggi 3 baris untuk semua kolom KECUALI Kolom Nama Hakim
-                // Kolom indices: 1(No), 2(No Perkara), 3(Tgl Masuk), 5(Tgl PMH)... sampai 12(Ket)
-                const columnsToMerge = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12];
-                
-                columnsToMerge.forEach(colIndex => {
-                    newSheet.mergeCells(startMerge, colIndex, endMerge, colIndex);
-                });
-
-                // --- 4. STYLING BIAR MIRIP FOTO 2 ---
-                // Kita kasih border ke semua 3 baris dan bikin rata tengah-tengah
-                for(let r = startMerge; r <= endMerge; r++) {
-                    for(let c = 1; c <= 12; c++) {
-                        const cell = newSheet.getCell(r, c);
-                        cell.border = {
-                            top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'}
-                        };
-                        // Biar data di sel yang di-merge posisinya ada di tengah kotak
-                        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-                    }
+            if (noPerk !== "" && noPerk.includes("/")) {
+                if (currentCase) {
+                    if (currentCase.noPerk.includes("Pdt.G")) gugatan.push(currentCase);
+                    else permohonan.push(currentCase);
                 }
-                
-                // Khusus kolom Nama Hakim kita bikin rata Kiri-Tengah biar rapi dibaca
-                newSheet.getCell(`D${startMerge}`).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-                newSheet.getCell(`D${startMerge+1}`).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-                newSheet.getCell(`D${startMerge+2}`).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-
-                currentRow += 3; // Lompat ke baris perkara berikutnya (karena tadi udah pake 3 baris)
+                currentCase = {
+                    noPerk: noPerk,
+                    kode: safeText(row.getCell(3)), // Kolom C SIPP (Jenis Perkara)
+                    h1: hakim, h2: "", h3: "",
+                    pp: safeText(row.getCell(5)),   // Kolom E SIPP (PP)
+                    tgl: [getRawDateStr(row.getCell(6)), getRawDateStr(row.getCell(7)), getRawDateStr(row.getCell(8)), getRawDateStr(row.getCell(9)), getRawDateStr(row.getCell(10))],
+                    stat: safeText(row.getCell(11))
+                };
+            } else if (currentCase && hakim !== "") {
+                if (currentCase.h2 === "") currentCase.h2 = hakim;
+                else if (currentCase.h3 === "") currentCase.h3 = hakim;
             }
         });
+        if (currentCase) {
+            if (currentCase.noPerk.includes("Pdt.G")) gugatan.push(currentCase);
+            else permohonan.push(currentCase);
+        }
 
-        // --- 5. DOWNLOAD FINISHED FILE ---
+        // --- 3. PENULISAN KE EXCEL (FIX 3 BARIS PER PERKARA) ---
+        let currentRow = 8;
+        const writeData = (data, sectionTitle) => {
+            newSheet.mergeCells(`A${currentRow}:N${currentRow}`);
+            newSheet.getCell(`A${currentRow}`).value = sectionTitle;
+            newSheet.getCell(`A${currentRow}`).font = { bold: true };
+            newSheet.getCell(`A${currentRow}`).alignment = { horizontal: 'center' };
+            currentRow++;
+
+            data.forEach((item, index) => {
+                let start = currentRow;
+                let end = currentRow + 2; // Paksa jatah 3 baris
+
+                // Baris 1: Isi Semua Data Utama
+                newSheet.getRow(start).values = [
+                    index + 1, item.noPerk, item.kode, item.h1, item.pp,
+                    item.tgl[0], item.tgl[1], item.tgl[2], item.tgl[3], item.tgl[4],
+                    item.stat, "", (item.tgl[4] === "" ? item.noPerk : ""), ""
+                ];
+
+                // Baris 2 & 3: Hanya untuk Hakim Anggota
+                newSheet.getCell(`D${start + 1}`).value = item.h2;
+                newSheet.getCell(`D${start + 2}`).value = item.h3;
+
+                // MERGE SEMUA KOLOM KECUALI KOLOM 4 (MAJELIS HAKIM)
+                [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].forEach(col => {
+                    newSheet.mergeCells(start, col, end, col);
+                });
+
+                // STYLING SEMUA BARIS (Start sampai End)
+                for (let r = start; r <= end; r++) {
+                    for (let c = 1; c <= 14; c++) {
+                        let cell = newSheet.getCell(r, c);
+                        cell.border = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+                        cell.alignment = { vertical: 'middle', wrapText: true };
+                        // Hakim rata kiri, selain itu tengah
+                        cell.alignment.horizontal = (c === 4 ? 'left' : 'center');
+                    }
+                }
+                currentRow += 3; // Selalu lompat 3 baris
+            });
+        };
+
+        writeData(gugatan, "GUGATAN");
+        writeData(permohonan, "PERMOHONAN");
+
+        // --- 4. DOWNLOAD ---
         const buffer = await newWorkbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
-        a.download = 'LIPA_1_SERANG_FORMAT_ASLI.xlsx';
+        a.href = url; a.download = 'LIPA_1_FIX_SERANG_14KOLOM.xlsx';
         a.click();
         
-        showStatus('Eksekusi Selesai Bro! Formatnya plekkketiplek sama Foto 2!', 'success');
+        showStatus('<b>Sukses Bro!</b> LIPA 1 sudah rapi 14 kolom & formasi 3 baris.', 'success');
 
     } catch (error) {
-        console.error("Error: ", error);
-        showStatus('Gagal memproses. Pastikan file SIPP lo udah di "Save As .xlsx" ya bro!', 'error');
+        console.error(error);
+        showStatus('Error pas baca SIPP. Cek filenya udah .xlsx asli belum?', 'error');
     }
 });
