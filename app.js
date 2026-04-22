@@ -1,5 +1,5 @@
 // =========================================================================
-// PRO-TAMA REPORT (AUTOMASI SIPP) - APP.JS (V3 - Konsistensi 3 Baris)
+// PRO-TAMA REPORT (AUTOMASI SIPP) - APP.JS (V3.1 - Fix Download)
 // =========================================================================
 
 const btnGenerate = document.getElementById('generateLaporan');
@@ -144,11 +144,20 @@ btnGenerate.addEventListener('click', async () => {
             });
         });
 
-        // Download
+        // --- FIX DOWNLOAD NATIVE ---
         const buffer = await newWorkbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        saveAs(blob, 'LIPA_1_PRO_TAMA.xlsx');
-        showStatus('Laporan Selesai! Cek formatnya bro.', 'success');
+        
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'LIPA_1_PRO_TAMA_Format3Baris.xlsx';
+        document.body.appendChild(a); // Tempel ke body bentar
+        a.click(); // Klik paksa
+        document.body.removeChild(a); // Copot lagi
+        window.URL.revokeObjectURL(url); // Bersihin memori
+
+        showStatus('Laporan Selesai! Cek format 3 barisnya bro.', 'success');
 
     } catch (error) {
         console.error(error);
