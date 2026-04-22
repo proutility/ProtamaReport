@@ -1,134 +1,194 @@
-// Ambil elemen dari HTML
+// =========================================================================
+// PRO-TAMA REPORT (AUTOMASI SIPP) - APP.JS
+// Develop by: Ilham Nur Pratama (PA Serang)
+// =========================================================================
+
 const btnGenerate = document.getElementById('generateLaporan');
 const fileInput = document.getElementById('uploadSipp');
 const statusMsg = document.getElementById('statusMessage');
 
-// Fungsi pembantu untuk nampilin status (sukses/loading/error)
 function showStatus(message, type) {
     statusMsg.textContent = message;
     statusMsg.classList.remove('hidden', 'bg-emerald-100', 'text-emerald-800', 'bg-red-100', 'text-red-800', 'bg-blue-100', 'text-blue-800');
-    
     if (type === 'success') statusMsg.classList.add('bg-emerald-100', 'text-emerald-800');
     else if (type === 'error') statusMsg.classList.add('bg-red-100', 'text-red-800');
     else statusMsg.classList.add('bg-blue-100', 'text-blue-800');
 }
 
-// Event listener saat tombol Generate diklik
 btnGenerate.addEventListener('click', async () => {
-    // 1. Cek apakah ada file yang diupload
     if (fileInput.files.length === 0) {
         showStatus('Bro, upload dulu file mentahan SIPP-nya!', 'error');
         return;
     }
 
     const file = fileInput.files[0];
-    showStatus('Sedang memproses data SIPP...', 'loading');
+    showStatus('Sedang memproses membaca data SIPP secara vertikal...', 'loading');
 
     try {
-        // 2. Baca file Excel mentah pakai FileReader dan ExcelJS
         const arrayBuffer = await file.arrayBuffer();
         const rawWorkbook = new ExcelJS.Workbook();
         await rawWorkbook.xlsx.load(arrayBuffer);
-
-        // Ambil sheet pertama dari file SIPP
         const rawSheet = rawWorkbook.worksheets[0]; 
 
-        // 3. Buat Workbook & Worksheet baru untuk Laporan PRO-TAMA
         const newWorkbook = new ExcelJS.Workbook();
-        const newSheet = newWorkbook.addWorksheet('Laporan Bulanan');
+        const newSheet = newWorkbook.addWorksheet('LIPA 1 - PRO TAMA');
 
-        // Setup Header Laporan (Bisa lo modif besok sesuai format PTA)
         newSheet.columns = [
             { header: 'No', key: 'no', width: 5 },
             { header: 'Nomor Perkara', key: 'nomor_perkara', width: 25 },
             { header: 'Susunan Majelis / Hakim', key: 'hakim', width: 40 },
-            { header: 'Status Perkara', key: 'status', width: 20 },
-            { header: 'Keterangan', key: 'ket', width: 20 }
+            { header: 'Tgl Penerimaan', key: 'tgl_masuk', width: 15 },
+            { header: 'Tgl Putus', key: 'tgl_putus', width: 15 },
+            { header: 'Status Putusan', key: 'status', width: 20 },
+            { header: 'Sisa Belum Diputus', key: 'sisa_belum', width: 25 },
+            { header: 'Lama Proses', key: 'lama_proses', width: 15 },
+            { header: 'Keterangan', key: 'ket', width: 15 }
         ];
 
-        // 4. Looping data dari file SIPP mentah
-        // Asumsi baris 1 adalah header SIPP, jadi kita mulai dari baris 2
-        let rowIndex = 1;
-        rawSheet.eachRow((row, rowNumber) => {
-            if (rowNumber > 1) { 
-                
-                // --- BAGIAN INI YANG BESOK LO SESUAIKAN DENGAN SIPP ---
-                // Asumsi: 
-                // Kolom B (2) = Nomor Perkara
-                // Kolom C (3) = Hakim Ketua / Hakim Tunggal
-                // Kolom D (4) = Hakim Anggota 1
-                // Kolom E (5) = Hakim Anggota 2
-                
-                let noPerkara = row.getCell(2).value;
-                let hakimKetua = row.getCell(3).value;
-                let hakimAnggota1 = row.getCell(4).value;
-                let hakimAnggota2 = row.getCell(5).value;
-                
-                // --- LOGIKA SMART FORMATTING (TUNGGAL VS MAJELIS) ---
-                let susunanHakim = "";
-                
-                // Cek jika Hakim Anggota 1 kosong (Berarti Hakim Tunggal seperti Dispensasi Kawin)
-                if (!hakimAnggota1 || hakimAnggota1 === "") {
-                    susunanHakim = "Hakim Tunggal: " + hakimKetua;
-                } else {
-                    // Jika ada anggota, format jadi Majelis
-                    susunanHakim = "Ketua: " + hakimKetua + "\n" + 
-                                   "Anggota 1: " + hakimAnggota1 + "\n" + 
-                                   "Anggota 2: " + hakimAnggota2;
-                }
+        let sisaLalu_G = 0, sisaLalu_P = 0;
+        let tambahIni_G = 0, tambahIni_P = 0;
+        let putusIni_G = 0, putusIni_P = 0;
+        const statusSah = ["Dikabulkan", "Ditolak", "Gugur", "Tidak Dapat Diterima", "Dicabut", "Perdamaian", "Digugurkan", "Dicoret dari Register"];
+        let bulanLaporan = 3; // Hardcode Maret dulu
 
-                // Masukkan data yang sudah dirapikan ke sheet baru
-                newSheet.addRow({
-                    no: rowIndex,
-                    nomor_perkara: noPerkara,
-                    hakim: susunanHakim,
-                    status: 'Belum Putus', // Besok bisa ditarik dari rumus/kolom SIPP
-                    ket: '-'
-                });
-                rowIndex++;
+        // --- LOGIKA PEMBACAAN VERTIKAL ---
+        const casesData = [];
+        let currentCase = null;
+
+        rawSheet.eachRow((row, rowNumber) => {
+            // Asumsi baris 1-7 itu kop surat/header. Kita mulai baca data
+            // Cek apakah ada Nomor Perkara
+            let rawNoPerkara = row.getCell(2).value; // Kolom B
+            let strNoPerkara = rawNoPerkara ? rawNoPerkara.toString().trim() : "";
+            
+            let namaHakim = row.getCell(4).value ? row.getCell(4).value.toString().trim() : ""; // Kolom D
+
+            if (strNoPerkara !== "" && strNoPerkara.includes("PA.")) {
+                // Kalo currentCase udah ada isinya, masukin ke lemari (casesData)
+                if (currentCase) {
+                    casesData.push(currentCase);
+                }
+                
+                // Bikin keranjang perkara baru
+                currentCase = {
+                    noPerkara: strNoPerkara,
+                    hakimKetua: namaHakim,
+                    hakimAnggota1: "",
+                    hakimAnggota2: "",
+                    tglMasuk: row.getCell(6).value, // Kolom F
+                    tglPutus: row.getCell(10).value, // Kolom J
+                    statusPutusan: row.getCell(11).value ? row.getCell(11).value.toString().trim() : "" // Kolom K
+                };
+            } else {
+                // Kalo strNoPerkara kosong, tapi currentCase ada, berarti ini baris Anggota
+                if (currentCase && namaHakim !== "") {
+                    if (currentCase.hakimAnggota1 === "") {
+                        currentCase.hakimAnggota1 = namaHakim;
+                    } else if (currentCase.hakimAnggota2 === "") {
+                        currentCase.hakimAnggota2 = namaHakim;
+                    }
+                }
             }
         });
+        // Push perkara terakhir setelah looping selesai
+        if (currentCase) casesData.push(currentCase);
 
-        // 5. Styling & Rapihin Tabel (Biar elegan)
-        newSheet.eachRow((row, rowNumber) => {
-            row.eachCell((cell) => {
-                // Kasih border tiap cell
-                cell.border = {
-                    top: {style:'thin'}, left: {style:'thin'},
-                    bottom: {style:'thin'}, right: {style:'thin'}
-                };
-                
-                // Alignment biar teks rapi di tengah/atas, apalagi ada text wrap buat Majelis
-                cell.alignment = { vertical: 'top', horizontal: 'left', wrapText: true };
-                
-                // Header (Baris 1) dibikin tebal dan rata tengah
-                if (rowNumber === 1) {
-                    cell.font = { bold: true };
-                    cell.alignment = { vertical: 'middle', horizontal: 'center' };
-                    cell.fill = {
-                        type: 'pattern',
-                        pattern: 'solid',
-                        fgColor: { argb: 'FFD3D3D3' } // Warna abu-abu elegan untuk header
-                    };
-                }
+        // --- PENGOLAHAN DATA & REKAP ---
+        let rowIndex = 1;
+        casesData.forEach(perkara => {
+            // 1. Setup Hakim Tunggal vs Majelis
+            let susunanHakim = "";
+            if (perkara.hakimAnggota1 === "") {
+                susunanHakim = "Hakim Tunggal:\n" + perkara.hakimKetua;
+            } else {
+                susunanHakim = "Ketua: " + perkara.hakimKetua + "\nAnggota 1: " + perkara.hakimAnggota1 + "\nAnggota 2: " + perkara.hakimAnggota2;
+            }
+
+            // 2. Setup Sisa & Lama Proses
+            let sisaBelumDiputus = "-";
+            let lamaProses = "-";
+
+            if (!perkara.tglPutus || perkara.tglPutus === "") {
+                sisaBelumDiputus = perkara.noPerkara;
+            } else {
+                let dateMasuk = new Date(perkara.tglMasuk);
+                let datePutus = new Date(perkara.tglPutus);
+                let hariProses = Math.ceil((datePutus.getTime() - dateMasuk.getTime()) / (1000 * 3600 * 24)); 
+                lamaProses = hariProses + " hari";
+            }
+
+            // 3. Rekapitulasi
+            let jenisPerkara = perkara.noPerkara.includes("Pdt.G") ? "G" : "P";
+            let col_AB = perkara.tglMasuk ? (new Date(perkara.tglMasuk).getMonth() + 1).toString() : "0";
+            let col_AC = perkara.tglPutus ? (new Date(perkara.tglPutus).getMonth() + 1).toString() : "0";
+            let col_AE = (col_AB === bulanLaporan.toString()) ? "1" : "0";
+
+            if (jenisPerkara === "G") {
+                if (col_AE === "0") sisaLalu_G++;
+                if (col_AE === "1") tambahIni_G++;
+                if (col_AC === bulanLaporan.toString() && statusSah.includes(perkara.statusPutusan)) putusIni_G++;
+            } else if (jenisPerkara === "P") {
+                if (col_AE === "0") sisaLalu_P++;
+                if (col_AE === "1") tambahIni_P++;
+                if (col_AC === bulanLaporan.toString() && statusSah.includes(perkara.statusPutusan)) putusIni_P++;
+            }
+
+            // 4. Masukin ke Excel Baru
+            let textTglMasuk = perkara.tglMasuk ? new Date(perkara.tglMasuk).toLocaleDateString('id-ID') : "";
+            let textTglPutus = perkara.tglPutus ? new Date(perkara.tglPutus).toLocaleDateString('id-ID') : "";
+
+            newSheet.addRow({
+                no: rowIndex,
+                nomor_perkara: perkara.noPerkara,
+                hakim: susunanHakim,
+                tgl_masuk: textTglMasuk,
+                tgl_putus: textTglPutus,
+                status: perkara.statusPutusan,
+                sisa_belum: sisaBelumDiputus,
+                lama_proses: lamaProses,
+                ket: "-"
             });
+            rowIndex++;
         });
 
-        // 6. Export dan Download File Jadinya
+        // --- BIKIN TABEL REKAP DI BAWAH ---
+        let sisaAkhir_G = sisaLalu_G + tambahIni_G - putusIni_G;
+        let sisaAkhir_P = sisaLalu_P + tambahIni_P - putusIni_P;
+
+        newSheet.addRow([]);
+        newSheet.addRow(['', 'REKAPITULASI PERKARA', 'Sisa Bulan Lalu', 'Tambah Bulan Ini', 'Putus Bulan Ini', 'Sisa Akhir']);
+        newSheet.addRow(['', 'GUGATAN (G)', sisaLalu_G, tambahIni_G, putusIni_G, sisaAkhir_G]);
+        newSheet.addRow(['', 'PERMOHONAN (P)', sisaLalu_P, tambahIni_P, putusIni_P, sisaAkhir_P]);
+
+        // --- STYLING BORDER ---
+        newSheet.eachRow((row, rowNumber) => {
+            row.eachCell((cell) => {
+                if(cell.value !== null && cell.value !== "") {
+                    cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+                }
+                cell.alignment = { vertical: 'top', horizontal: 'left', wrapText: true };
+            });
+            if (rowNumber === 1) { row.font = { bold: true }; row.alignment = { vertical: 'middle', horizontal: 'center' }; }
+        });
+
+        let rekapHeaderRow = newSheet.lastRow - 2; 
+        newSheet.getRow(rekapHeaderRow).font = { bold: true };
+        newSheet.getRow(rekapHeaderRow + 1).font = { bold: true };
+        newSheet.getRow(rekapHeaderRow + 2).font = { bold: true };
+
         const buffer = await newWorkbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = window.URL.createObjectURL(blob);
-        
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'Laporan_PRO-TAMA_SIPP.xlsx';
+        a.download = 'PRO_TAMA_LIPA1_Vertikal.xlsx';
         a.click();
-        
         window.URL.revokeObjectURL(url);
-        showStatus('Laporan berhasil di-generate! Cek folder Download.', 'success');
+        
+        showStatus('Eksekusi Selesai Bro! LIPA 1 siap dikirim!', 'success');
 
     } catch (error) {
-        console.error("Error processing Excel: ", error);
-        showStatus('Gagal memproses file. Pastikan formatnya benar.', 'error');
+        console.error("Error: ", error);
+        showStatus('Gagal memproses. Cek console log.', 'error');
     }
 });
