@@ -1,5 +1,5 @@
 // =========================================================================
-// PRO-TAMA REPORT (AUTOMASI SIPP) - APP.JS (V6 - STANDAR MA SERANG)
+// PRO-TAMA REPORT (AUTOMASI SIPP) - APP.JS (V7 - FINAL MASTER LIPA 1)
 // Develop by: Ilham Nur Pratama (PA Serang)
 // =========================================================================
 
@@ -13,6 +13,12 @@ function showStatus(message, type) {
     if (type === 'success') statusMsg.classList.add('bg-emerald-100', 'text-emerald-800');
     else if (type === 'error') statusMsg.classList.add('bg-red-100', 'text-red-800');
     else statusMsg.classList.add('bg-blue-100', 'text-blue-800');
+}
+
+function cleanHakim(name) {
+    if (!name) return "";
+    // Menghilangkan awalan "Hakim Ketua:", "Hakim Anggota:", dll jika ada dari SIPP
+    return name.replace(/Hakim Ketua:|Hakim Anggota \d:|Hakim Anggota:/gi, '').trim();
 }
 
 function safeText(cell) {
@@ -39,7 +45,7 @@ btnGenerate.addEventListener('click', async () => {
     }
 
     const file = fileInput.files[0];
-    showStatus('Sedang merakit LIPA 1 (Struktur 3 Baris Fix)...', 'loading');
+    showStatus('Sedang merakit LIPA 1 Master (3 Baris Berjenjang)...', 'loading');
 
     try {
         const arrayBuffer = await file.arrayBuffer();
@@ -50,13 +56,13 @@ btnGenerate.addEventListener('click', async () => {
         const newWorkbook = new ExcelJS.Workbook();
         const newSheet = newWorkbook.addWorksheet('LIPA 1');
 
-        // --- 1. SETUP 14 KOLOM ---
+        // Setup 14 Kolom Standar PA Serang
         newSheet.columns = [
             { header: 'No', width: 5 },              // 1 (A)
-            { header: 'No Perkara', width: 25 },     // 2 (B)
-            { header: 'Kode Perkara', width: 20 },   // 3 (C) -> KOLOM SENDIRI
-            { header: 'Majelis Hakim', width: 40 },  // 4 (D) -> KOLOM SENDIRI (3 BARIS)
-            { header: 'PP', width: 25 },             // 5 (E) -> KOLOM SENDIRI
+            { header: 'No Perkara', width: 30 },     // 2 (B)
+            { header: 'Kode Perkara', width: 15 },   // 3 (C)
+            { header: 'Nama Majelis Hakim', width: 45 }, // 4 (D) -> INI YANG TIDAK DI-MERGE
+            { header: 'Nama PP', width: 30 },        // 5 (E)
             { header: 'Penerimaan', width: 12 },     // 6 (F)
             { header: 'PMH', width: 12 },            // 7 (G)
             { header: 'PHS', width: 12 },            // 8 (H)
@@ -64,23 +70,23 @@ btnGenerate.addEventListener('click', async () => {
             { header: 'Diputus', width: 12 },        // 10 (J)
             { header: 'Jenis Putusan', width: 18 },  // 11 (K)
             { header: 'Belum Bagi', width: 12 },     // 12 (L)
-            { header: 'Belum Putus', width: 25 },    // 13 (M)
+            { header: 'Belum Putus', width: 30 },    // 13 (M)
             { header: 'Ket', width: 10 }             // 14 (N)
         ];
 
-        // Header Atas (Kop)
+        // Kop Surat PA Serang
         newSheet.mergeCells('A1:N1'); newSheet.getCell('A1').value = "LAPORAN KEADAAN PERKARA PENGADILAN AGAMA SERANG";
         newSheet.getCell('A1').font = { bold: true, size: 14 };
         newSheet.getCell('A1').alignment = { horizontal: 'center' };
 
-        // --- 2. PROSES DATA SIPP ---
+        // Data Processing
         const gugatan = [];
         const permohonan = [];
         let currentCase = null;
 
         rawSheet.eachRow((row, rowNumber) => {
-            let noPerk = safeText(row.getCell(2)); // Kolom B
-            let hakim = safeText(row.getCell(4));  // Kolom D
+            let noPerk = safeText(row.getCell(2)); 
+            let hakim = cleanHakim(safeText(row.getCell(4)));
 
             if (noPerk !== "" && noPerk.includes("/")) {
                 if (currentCase) {
@@ -89,10 +95,10 @@ btnGenerate.addEventListener('click', async () => {
                 }
                 currentCase = {
                     noPerk: noPerk,
-                    kode: safeText(row.getCell(3)), // Kolom C SIPP (Jenis Perkara)
+                    kode: safeText(row.getCell(3)),
                     h1: hakim, h2: "", h3: "",
-                    pp: safeText(row.getCell(5)),   // Kolom E SIPP (PP)
-                    tgl: [getRawDateStr(row.getCell(6)), getRawDateStr(row.getCell(7)), getRawDateStr(row.getCell(8)), getRawDateStr(row.getCell(9)), getRawDateStr(row.getCell(10))],
+                    pp: safeText(row.getCell(5)),
+                    dates: [getRawDateStr(row.getCell(6)), getRawDateStr(row.getCell(7)), getRawDateStr(row.getCell(8)), getRawDateStr(row.getCell(9)), getRawDateStr(row.getCell(10))],
                     stat: safeText(row.getCell(11))
                 };
             } else if (currentCase && hakim !== "") {
@@ -105,64 +111,64 @@ btnGenerate.addEventListener('click', async () => {
             else permohonan.push(currentCase);
         }
 
-        // --- 3. PENULISAN KE EXCEL (FIX 3 BARIS PER PERKARA) ---
         let currentRow = 8;
-        const writeData = (data, sectionTitle) => {
+        const writeData = (data, title) => {
             newSheet.mergeCells(`A${currentRow}:N${currentRow}`);
-            newSheet.getCell(`A${currentRow}`).value = sectionTitle;
-            newSheet.getCell(`A${currentRow}`).font = { bold: true };
-            newSheet.getCell(`A${currentRow}`).alignment = { horizontal: 'center' };
+            let titleCell = newSheet.getCell(`A${currentRow}`);
+            titleCell.value = title;
+            titleCell.font = { bold: true };
+            titleCell.alignment = { horizontal: 'center' };
             currentRow++;
 
             data.forEach((item, index) => {
                 let start = currentRow;
-                let end = currentRow + 2; // Paksa jatah 3 baris
+                let end = currentRow + 2; // FIX JATAH 3 BARIS
 
-                // Baris 1: Isi Semua Data Utama
+                // Baris 1: Semua data inti + Hakim Ketua
                 newSheet.getRow(start).values = [
                     index + 1, item.noPerk, item.kode, item.h1, item.pp,
-                    item.tgl[0], item.tgl[1], item.tgl[2], item.tgl[3], item.tgl[4],
-                    item.stat, "", (item.tgl[4] === "" ? item.noPerk : ""), ""
+                    item.dates[0], item.dates[1], item.dates[2], item.dates[3], item.dates[4],
+                    item.stat, "", (item.dates[4] === "" ? item.noPerk : ""), ""
                 ];
 
-                // Baris 2 & 3: Hanya untuk Hakim Anggota
+                // Baris 2 & 3: Hanya untuk Hakim Anggota di Kolom D
                 newSheet.getCell(`D${start + 1}`).value = item.h2;
                 newSheet.getCell(`D${start + 2}`).value = item.h3;
 
-                // MERGE SEMUA KOLOM KECUALI KOLOM 4 (MAJELIS HAKIM)
+                // MERGE SEMUA KOLOM VERTIKAL KECUALI KOLOM D (URUTAN 4)
                 [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].forEach(col => {
                     newSheet.mergeCells(start, col, end, col);
                 });
 
-                // STYLING SEMUA BARIS (Start sampai End)
+                // STYLING BORDER & ALIGNMENT
                 for (let r = start; r <= end; r++) {
                     for (let c = 1; c <= 14; c++) {
                         let cell = newSheet.getCell(r, c);
                         cell.border = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
                         cell.alignment = { vertical: 'middle', wrapText: true };
-                        // Hakim rata kiri, selain itu tengah
+                        // Kolom Hakim Rata Kiri, Sisanya Tengah
                         cell.alignment.horizontal = (c === 4 ? 'left' : 'center');
                     }
                 }
-                currentRow += 3; // Selalu lompat 3 baris
+                currentRow += 3; 
             });
         };
 
         writeData(gugatan, "GUGATAN");
         writeData(permohonan, "PERMOHONAN");
 
-        // --- 4. DOWNLOAD ---
+        // --- DOWNLOAD ---
         const buffer = await newWorkbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = 'LIPA_1_FIX_SERANG_14KOLOM.xlsx';
+        a.href = url; a.download = 'LIPA_1_SERANG_MASTER_V7.xlsx';
         a.click();
         
-        showStatus('<b>Sukses Bro!</b> LIPA 1 sudah rapi 14 kolom & formasi 3 baris.', 'success');
+        showStatus(`<b>Berhasil!</b> LIPA 1 sudah rapi 3 baris berjenjang. <br> <a href="${url}" download="LIPA_1_SERANG_MASTER_V7.xlsx" style="color:blue;">Klik Manual Jika Tidak Download</a>`, 'success');
 
     } catch (error) {
         console.error(error);
-        showStatus('Error pas baca SIPP. Cek filenya udah .xlsx asli belum?', 'error');
+        showStatus('Gagal, pastikan file SIPP benar.', 'error');
     }
 });
